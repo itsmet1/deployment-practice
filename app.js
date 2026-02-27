@@ -2,6 +2,8 @@ const express = require("express");
 const app = express();
 const port = process.env.PORT || 3001;
 
+const message = process.env.MESSAGE || "Hello from Render!";
+
 app.get("/", (req, res) => res.type('html').send(html));
 
 const server = app.listen(port, () => console.log(`Example app listening on port ${port}!`));
@@ -54,7 +56,7 @@ const html = `
   </head>
   <body>
     <section>
-      Hello from Render!
+      ${message}
     </section>
   </body>
 </html>
