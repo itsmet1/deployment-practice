@@ -1,63 +1,117 @@
+require("dotenv").config();
 const express = require("express");
+const rateLimit = require("express-rate-limit");
+const { GoogleGenAI } = require("@google/genai"); // new official client
+
 const app = express();
 const port = process.env.PORT || 3001;
 
-const message = process.env.MESSAGE || "Hello nigas!!!!";
+app.use(express.json());
 
-app.get("/", (req, res) => res.type('html').send(html));
+/* ---------------- Gemini Client ---------------- */
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY // optional, will auto-read from .env
+});
 
-const server = app.listen(port, () => console.log(`Example app listening on port ${port}!`));
+/* ---------------- Rate Limiting ---------------- */
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  message: { error: "Too many requests. Try again later." }
+});
 
-server.keepAliveTimeout = 120 * 1000;
-server.headersTimeout = 120 * 1000;
+app.use("/ask-ai", limiter);
+
+/* ---------------- HTML Frontend ---------------- */
+const message = process.env.MESSAGE || "Hello Express + Gemini 3 Flash 🚀";
 
 const html = `
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Demo nigas</title>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
-    <script>
-      setTimeout(() => {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-          disableForReducedMotion: true
-        });
-      }, 500);
-    </script>
-    <style>
-      @import url("https://p.typekit.net/p.css?s=1&k=vnd5zic&ht=tk&f=39475.39476.39477.39478.39479.39480.39481.39482&a=18673890&app=typekit&e=css");
-      @font-face {
-        font-family: "neo-sans";
-        src: url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff2"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("opentype");
-        font-style: normal;
-        font-weight: 700;
-      }
-      html {
-        font-family: neo-sans;
-        font-weight: 700;
-        font-size: calc(62rem / 16);
-      }
-      body {
-        background: white;
-      }
-      section {
-        border-radius: 1em;
-        padding: 1em;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        margin-right: -50%;
-        transform: translate(-50%, -50%);
-      }
-    </style>
-  </head>
-  <body>
-    <section>
-      ${message}
-    </section>
-  </body>
+<head>
+<title>Gemini 3 Flash Chat Demo</title>
+<style>
+body { font-family: sans-serif; background: #f4f6f8; display: flex; justify-content: center; align-items: center; height: 100vh; }
+#chat-container { width: 400px; height: 600px; background: white; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+#chat { flex: 1; padding: 15px; overflow-y: auto; }
+.message { margin: 10px 0; padding: 10px; border-radius: 8px; max-width: 80%; white-space: pre-wrap; }
+.user { background: #007bff; color: white; align-self: flex-end; margin-left: auto; }
+.ai { background: #e9ecef; color: black; }
+#input-area { display: flex; border-top: 1px solid #ddd; }
+input { flex: 1; border: none; padding: 12px; font-size: 16px; outline: none; }
+button { border: none; background: #007bff; color: white; padding: 12px 18px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="chat-container">
+  <div id="chat"></div>
+  <div id="input-area">
+    <input id="prompt" placeholder="Ask Gemini..." />
+    <button onclick="sendMessage()">Send</button>
+  </div>
+</div>
+
+<script>
+const chat = document.getElementById("chat");
+
+function addMessage(text, sender) {
+  const div = document.createElement("div");
+  div.className = "message " + sender;
+  div.innerText = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendMessage() {
+  const input = document.getElementById("prompt");
+  const message = input.value.trim();
+  if (!message) return;
+
+  addMessage(message, "user");
+  input.value = "";
+  addMessage("Thinking...", "ai");
+
+  const res = await fetch("/ask-ai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message })
+  });
+
+  const data = await res.json();
+  chat.lastChild.remove();
+  addMessage(data.reply || data.error, "ai");
+}
+
+document.getElementById("prompt").addEventListener("keypress", function(e) {
+  if (e.key === "Enter") sendMessage();
+});
+</script>
+</body>
 </html>
-`
+`;
+
+/* ---------------- Routes ---------------- */
+app.get("/", (req, res) => res.type("html").send(html));
+
+app.post("/ask-ai", async (req, res) => {
+  try {
+    const userMessage = req.body.message;
+    if (!userMessage) return res.status(400).json({ error: "Message is required" });
+
+    const result = await ai.models.generateContent({
+      model: "gemini-3-flash-preview", // current free model
+      contents: userMessage
+    });
+
+    res.json({ reply: result.text });
+
+  } catch (error) {
+    console.error("Gemini Error:", error);
+    res.status(500).json({ error: "AI request failed" });
+  }
+});
+
+/* ---------------- Server ---------------- */
+const server = app.listen(port, () => console.log(`Server running on port ${port}`));
+server.keepAliveTimeout = 120 * 1000;
+server.headersTimeout = 120 * 1000;
