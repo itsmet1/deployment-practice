@@ -1,17 +1,14 @@
-require("dotenv").config();
+// app.js
 const express = require("express");
 const rateLimit = require("express-rate-limit");
-const { GoogleGenAI } = require("@google/genai"); // new official client
+const { GoogleGenAI } = require("@google/genai");
+const { port, message, geminiApiKey } = require("./config");
 
 const app = express();
-const port = process.env.PORT || 3001;
-
 app.use(express.json());
 
 /* ---------------- Gemini Client ---------------- */
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY // optional, will auto-read from .env
-});
+const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
 /* ---------------- Rate Limiting ---------------- */
 const limiter = rateLimit({
@@ -19,17 +16,14 @@ const limiter = rateLimit({
   max: 10,
   message: { error: "Too many requests. Try again later." }
 });
-
 app.use("/ask-ai", limiter);
 
 /* ---------------- HTML Frontend ---------------- */
-const message = process.env.MESSAGE || "Hello Express + Gemini 3 Flash 🚀";
-
 const html = `
 <!DOCTYPE html>
 <html>
 <head>
-<title>Gemini 3 Flash Chat Demo</title>
+<title>Gemini Chat Demo</title>
 <style>
 body { font-family: sans-serif; background: #f4f6f8; display: flex; justify-content: center; align-items: center; height: 100vh; }
 #chat-container { width: 400px; height: 600px; background: white; border-radius: 10px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
@@ -50,10 +44,8 @@ button { border: none; background: #007bff; color: white; padding: 12px 18px; cu
     <button onclick="sendMessage()">Send</button>
   </div>
 </div>
-
 <script>
 const chat = document.getElementById("chat");
-
 function addMessage(text, sender) {
   const div = document.createElement("div");
   div.className = "message " + sender;
@@ -61,27 +53,22 @@ function addMessage(text, sender) {
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
-
 async function sendMessage() {
   const input = document.getElementById("prompt");
   const message = input.value.trim();
   if (!message) return;
-
   addMessage(message, "user");
   input.value = "";
   addMessage("Thinking...", "ai");
-
   const res = await fetch("/ask-ai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message })
   });
-
   const data = await res.json();
   chat.lastChild.remove();
   addMessage(data.reply || data.error, "ai");
 }
-
 document.getElementById("prompt").addEventListener("keypress", function(e) {
   if (e.key === "Enter") sendMessage();
 });
@@ -99,7 +86,7 @@ app.post("/ask-ai", async (req, res) => {
     if (!userMessage) return res.status(400).json({ error: "Message is required" });
 
     const result = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", // current free model
+      model: "gemini-3-flash-preview",
       contents: userMessage
     });
 
